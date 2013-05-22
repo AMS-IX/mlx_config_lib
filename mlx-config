@@ -1,0 +1,129 @@
+#!/usr/bin/python -Btt
+
+import mlx_config_lib
+import sys
+import getopt
+import getpass
+from Exscript import Account
+from Exscript.util.start import start
+
+def usage():
+	print(  "Usage: mlx-config -s[witch] -p[ort-range] -u[sername] -t[imer] -d[isable] -v[lan] -c[ommand]\n"
+		"  -s[witch] name/address\n"
+		"  -u[sername] superman\n"
+		"    Enable-mode username, SSH login itself is done using your key-pair\n"
+		"    -p[ort-range] 'range'\n"
+		"      The first and last ports should be connected to a tester, you can force the first and last ports like this: '10/1, 9/1..8, 10/2'\n"
+		"      -t[imer] 10\n"
+		"        Wait timer for a interface to come up - default is 10\n"
+		"      -d[isable]\n"
+		"        disable the ports in the port-range, mark them as 'FREE', and remove the VLANs\n"
+		"      -v[lan] 2000\n"
+		"        Start with this VLAN - default is 2000\n"
+		"    -c[ommand] 'show vlan 2000'\n"
+		"      send a command to the switch, note that '-p' and '-c' are mutually exclusive\n"
+		"  EXAMPLE1: mlx-config -s core-intersarinix-412 -u spiderman -p '9/1..8' -t 1\n"
+		"  EXAMPLE2: mlx-config -s core-intersarinix-412 -u batman -p '9/1..8' -d\n"
+		"  EXAMPLE3: mlx-config -s core-intersarinix-412 -u wolverine -c 'show vlan 2000'"
+	)
+
+def main(argv):
+	try:
+		opts, args = getopt.getopt(argv, "hs:u:p:t:dv:c:", ["help", "switch=", "username=", "port-range=", "timer=", "disable", "vlan=", "command="])
+	except getopt.GetoptError:
+		usage()
+		sys.exit(2)
+
+#defaults
+	test = 0
+	timer = 10
+	username = ""
+	password = ""
+	switch = "NULL"
+	snakevlan = 2000
+	verbose = 1	# show all commands going to the switch, 1 yes, 0 no
+
+	for opt, arg in opts:
+		if opt in ("-h", "--help"):
+			usage()
+			sys.exit()
+		elif opt in ("-s", "--switch"):
+			switch = arg
+		elif opt in ("-u", "--username"):
+			username = arg
+			password = getpass.getpass()
+		elif opt in ("-p", "--port-range"):
+			if test == 0:
+				snakerange = arg
+				test = 1
+			elif test == 2:
+				snakerange = arg
+			else:
+				usage()
+				sys.exit(2)
+		elif opt in ("-t", "--timer"):
+			timer = int(arg)
+		elif opt in ("-d", "--disable"):
+			if (test == 0) or (test == 1):
+				test = 2
+			else:
+				usage()
+				sys.exit(2)
+		elif opt in ("-v", "--vlan"):
+			snakevlan = int(arg)
+		elif opt in ("-c", "--command"):
+			if test == 0:
+				command = arg
+				test = 10
+			else:
+				usage()
+				sys.exit(2)
+
+	if switch == "NULL":
+		usage()
+		sys.exit(2)
+
+	if test == 0:
+		usage()
+		sys.exit(2)
+
+
+
+	#########################################################################################################
+	# Automatically choose if we should configure for an even, or uneven amount of ports					#
+	# Even: a tester is connected to the first and last port, all ports are untagged						#
+	# Uneven:  1 tester with only 1 interface which is connected into both vlan 2001 and 2002 (tagged)		#
+	#          port 2 is untagged in 2001, port N-1 is untagged in 2002										#
+	#########################################################################################################
+	if test == 1:
+		mlx_config_lib.add_automatic(switch, username, password, verbose, snakerange, timer, snakevlan)
+
+	##################################################################################
+	# All tests were successfull, now disable all ports, portname FREE, remove vlans #
+	##################################################################################
+	if test == 2:
+		mlx_config_lib.port_FREE(switch, username, password, verbose, snakerange)
+
+
+	#########################
+	# Send a quick command  #
+	#########################
+	if test == 10:
+		mlx_config_lib.send_command(switch, username, password, verbose, command)
+
+	########
+	# ???? #
+	########
+	#if test == 4:
+	#	port = '13/1..8'
+	#	mlx_config_lib.set_mac_acl(switch, username, password, verbose, port, "#H000103030000")
+	#	mlx_config_lib.remove_mac_acl(switch, username, password, verbose, port, "#H000103030000")
+	#	mlx_config_lib.remove_vlans(switch, username, password, verbose)
+	#	mlx_config_lib.port_down_bringer(switch, username, password, verbose, port)
+
+	# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
